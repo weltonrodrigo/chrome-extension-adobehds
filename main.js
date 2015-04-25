@@ -1,30 +1,28 @@
-// The main module of the hds-link-detector Add-on.
-// Modules needed are `require`d, similar to CommonJS modules.
-var {Cc, Ci, Cr} = require('chrome');
-var clipboard = require('sdk/clipboard');
-var events = require("sdk/system/events");
-var notifications = require("sdk/notifications");
-var self = require("sdk/self");
-var widget = require("sdk/widget");
 
-var enabled = false;
+/*
+ *
+ * This extension is based on AdobeHDS Link Detector Firefox complement.
+ * https://addons.mozilla.org/pt-BR/firefox/addon/hds-link-detector/?src=api
+ *
+ */
+
 var manifestUrl = false;
-var hdsDisabled = self.data.url("hds_disabled.png");
-var hdsEnabled = self.data.url("hds_enabled.png");
+var manifestDetected = false;
 
-function onHttpRequest(event)
+
+function onSendHeaders(details)
 {
-    if (manifestUrl)
+    //console.log("onSendHeaders: " + details.url);
+    if (manifestDetected && manifestUrl)
     {
-        var httpChannel = event.subject.QueryInterface(Ci.nsIHttpChannel);
-        var fullUrl = httpChannel.URI.path;
-
-        // Double slash in beginning of relative url causes resolve function to
-        // return wrong absolute url
-        if (fullUrl.substr(0, 2) == "//") fullUrl = fullUrl.substr(1);
-        fullUrl = httpChannel.URI.resolve(fullUrl);
-
+        var fullUrl = details.url
         var url = fullUrl;
+        var headers = details.requestHeaders;
+
+        var userAgent = findUserAgent(headers);
+
+        //console.log("onSendHeaders: " + userAgent);
+
         if (url.indexOf("?") != -1) url = url.substr(0, url.indexOf("?"));
         if (url.search(/seg\d+\-frag\d+$/i) != -1)
         {
@@ -32,62 +30,73 @@ function onHttpRequest(event)
             var authParams = false;
 
             if (fullUrl.indexOf("?") != -1) authParams = fullUrl.substr(fullUrl.indexOf("?") + 1);
+            
             if (authParams)
             {
-                var userAgent = httpChannel.getRequestHeader("User-Agent");
-                command += " --auth \"" + authParams + "\" --useragent \"" + userAgent + "\"";
+                command += " --auth \"" + authParams + "\"";
             }
-            console.log(command);
-            var trimmedCmd = command;
-            if (trimmedCmd.length > 256) trimmedCmd = trimmedCmd.substr(0, 253) + "...";
-            notifications.notify(
+            if (userAgent)
             {
-                title: "Click to copy command to clipboard",
-                text: trimmedCmd,
-                iconURL: hdsEnabled,
-                data: command,
-                onClick: function (data)
-                {
-                    clipboard.set(data);
-                }
-            });
+                command += " --useragent \"" + userAgent + "\"";          
+            }
+
+            console.log(command);
+            
+            // Show notification with command
+
+            manifestDetected = false;
             manifestUrl = false;
         }
     }
 }
 
-function onHttpResponse(event)
+function findUserAgent(headers)
 {
-    if (!manifestUrl)
-    {
-        var httpChannel = event.subject.QueryInterface(Ci.nsIHttpChannel);
-        var fullUrl = httpChannel.URI.path;
+    a = headers.filter(function(el){
+        return el.name === 'User-Agent'
+    });
 
-        // Double slash in beginning of relative url causes resolve function to
-        // return wrong absolute url
-        if (fullUrl.substr(0, 2) == "//") fullUrl = fullUrl.substr(1);
-        fullUrl = httpChannel.URI.resolve(fullUrl);
+    if (a.length > 0){
+        return a.value;
+    }
+
+    return false;
+}
+
+function onCompleted(details)
+{
+    //console.log("onCompleted: " + details.url);
+    if (!manifestUrl && !manifestDetected)
+    {
+        var fullUrl = details.url;
 
         var url = fullUrl;
         if (url.indexOf("?") != -1) url = url.substr(0, url.indexOf("?"));
         if (url.search(/\.f4m$/i) != -1)
         {
+            manifestDetected = true;
             manifestUrl = fullUrl;
 
-            var newListener = new TracingListener();
-            event.subject.QueryInterface(Ci.nsITraceableChannel);
-            newListener.originalListener = event.subject.setNewListener(newListener);
+            //var newListener = new TracingListener();
+            //event.subject.QueryInterface(Ci.nsITraceableChannel);
+            //newListener.originalListener = event.subject.setNewListener(newListener);
         }
     }
 }
 
+/*
 function CCIN(cName, ifaceName)
 {
     return Cc[cName].createInstance(Ci[ifaceName]);
 }
+*/
 
-// Copy response listener implementation
+/*
+ * There is no way right now (april-2015) to read response body from a chrome extension
+ * without using developer tools.
+ * So, this may be broke, because we won't check if the manifest is valid.
 
+ * TODO: Get manifest via XMLHTTP (if possible) and parse it.
 function TracingListener()
 {
     this.originalListener = null;
@@ -165,64 +174,9 @@ function TracingListener()
         throw Cr.NS_NOINTERFACE;
     };
 }
-
-exports.main = function ()
-{
-    var myWidget = new widget.Widget(
-    {
-        // Mandatory string used to identify your widget in order to
-        // save its location when the user moves it in the browser.
-        // This string has to be unique and must not be changed over time.
-        id: "hds-link-detector",
-
-        // A required string description of the widget used for
-        // accessibility, title bars, and error reporting.
-        label: "HDS Link Detector",
+*/
 
 
-        // An optional string URL to content to load into the widget.
-        // This can be local content or remote content, an image or
-        // web content. Widgets must have either the content property
-        // or the contentURL property set.
-        //
-        // If the content is an image, it is automatically scaled to
-        // be 16x16 pixels.
-        contentURL: hdsDisabled,
-
-        // Add a function to trigger when the Widget is clicked.
-        onClick: function (event)
-        {
-            if (!enabled)
-            {
-                events.on('http-on-modify-request', onHttpRequest);
-                events.on('http-on-examine-response', onHttpResponse);
-                events.on('http-on-examine-cached-response', onHttpResponse);
-                events.on('http-on-examine-merged-response', onHttpResponse);
-                myWidget.contentURL = hdsEnabled;
-                notifications.notify(
-                {
-                    title: "Enabled",
-                    text: "HDS Link Detector is now enabled.",
-                    iconURL: hdsEnabled
-                });
-                enabled = true;
-            }
-            else
-            {
-                events.off('http-on-modify-request', onHttpRequest);
-                events.off('http-on-examine-response', onHttpResponse);
-                events.off('http-on-examine-cached-response', onHttpResponse);
-                events.off('http-on-examine-merged-response', onHttpResponse);
-                myWidget.contentURL = hdsDisabled;
-                notifications.notify(
-                {
-                    title: "Disabled",
-                    text: "HDS Link Detector is now disabled.",
-                    iconURL: hdsDisabled
-                });
-                enabled = false;
-                manifestUrl = false;
-            }
-        }
-    });
-};
+// TODO: Check if blocking is really needed.
+chrome.webRequest.onSendHeaders.addListener(onSendHeaders, {urls: ["<all_urls>"]}, ["requestHeaders"]);
+chrome.webRequest.onCompleted.addListener(onCompleted, {urls: ["<all_urls>"]}, ["responseHeaders"]);
