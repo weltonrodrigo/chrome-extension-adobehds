@@ -1,0 +1,12 @@
+{
+  "version": "0.2",
+  "name": "AdobeHDS.php Command Generator",
+  "description": "Generates command lines for AdobeHDS.php",
+  "author": "Welton Rodrigo Torres Nascimento <rodrigo@familianascimento.org>",
+  "permissions": ["webRequest", "webRequestBlocking", "*://*/*"  ],
+  "background": {
+    "scripts": ["main.js"]
+  },
+  "manifest_version": 2,
+  "update_url": "http://s3-sa-east-1.amazonaws.com/extensions.familianascimento.org/adobehds_generator/updates.xml"
+}
