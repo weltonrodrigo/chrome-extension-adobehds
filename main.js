@@ -13,7 +13,15 @@ var manifestDetected = false;
 
 var disciplina;
 var aula;
+var nextAula;
 
+// ID of the tab where my content script is running;
+var tabID;
+
+/*
+* After the manifest is downloaded, this function is called when the player will get the first video 
+* fragment. This is needed to get authentication information which the player derives from is key.
+*/
 function onSendHeaders(details)
 {
     //console.log("onSendHeaders: " + details.url);
@@ -45,14 +53,44 @@ function onSendHeaders(details)
             }
 
             console.dir(command);
+
             queueDownload(manifestUrl, authParams, userAgent);
-            
-            // Show notification with command
 
             manifestDetected = false;
             manifestUrl = false;
         }
     }
+}
+
+/*
+* Get addition information about this class. 
+*/
+function getClassDetails(callback){
+
+    chrome.tabs.sendMessage(tabID, {
+                command: 'get_details',
+            }, function (response) {
+                if (chrome.runtime.lastError) {
+                    console.log('ERROR: ' + chrome.runtime.lastError.message);
+                } else {
+                    callback(response);
+                }
+            });
+}
+
+/*
+* Tell content script to change tab URL to the next class URL;
+*/
+function goToNextClass(){
+    if (typeof nextAula == undefined){
+        console.log("Can't go past the last class");
+    }else{
+        chrome.tabs.update(tabID, {url: nextAula});
+    }
+}
+
+function logOnContentScript(message){
+    chrome.tabs.sendMessage(tabID, {command: "log", message: message});
 }
 
 function queueDownload(manifestURL, authParams, userAgent){
@@ -66,6 +104,13 @@ function queueDownload(manifestURL, authParams, userAgent){
     data.append('ua', userAgent);
 
     var xhr = new XMLHttpRequest();
+
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState == XMLHttpRequest.DONE && xhr.status == 200) {
+            logOnContentScript("Download finished");
+            setTimeout(function(){  goToNextClass()  }, 5000);
+        }
+    }
     xhr.open('POST', endpointUrl, false);
     //xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
     xhr.send(data);
@@ -86,6 +131,9 @@ function findUserAgent(headers)
     return false;
 }
 
+/*
+* This will try to get manifest URL from a request.
+*/
 function onCompleted(details)
 {
     //console.log("onCompleted: " + details.url);
@@ -200,18 +248,25 @@ function TracingListener()
 */
 
 
-// TODO: Check if blocking is really needed.
-chrome.webRequest.onSendHeaders.addListener(onSendHeaders, {urls: ["<all_urls>"]}, ["requestHeaders"]);
-chrome.webRequest.onCompleted.addListener(onCompleted, {urls: ["<all_urls>"]}, ["responseHeaders"]);
 
 chrome.runtime.onMessage.addListener(
   function(request, sender, sendResponse) {
+    
+    switch(request.command){
+        case "register":
+            // TODO: find a way to deregister the content-script;
+            tabID = sender.tab.id;
 
-    console.log("Disciplina: " + request.disciplina);
-    console.log("Aula: " + request.aula);
+            aula = request.aula;
+            disciplina = request.disciplina;
+            nextAula = request.nextAula;
 
-
-    disciplina = request.disciplina;
-    aula = request.aula;
+            // TODO: Check if blocking is really needed.
+            chrome.webRequest.onSendHeaders.addListener(onSendHeaders, {urls: ["<all_urls>"]}, ["requestHeaders"]);
+            chrome.webRequest.onCompleted.addListener(onCompleted, {urls: ["<all_urls>"]}, ["responseHeaders"]);
+            
+            sendResponse({result : "OK"});
+            break;
+    }
 
   });
