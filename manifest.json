@@ -7,6 +7,14 @@
   "background": {
     "scripts": ["main.js"]
   },
+  "content_scripts": [
+    {
+    "run_at": "document_end", "matches": ["https://www.cers.com.br/aluno/aula/*"], "js": ["jquery.js", "content_script.js"]
+    },
+    {
+    "run_at": "document_end", "matches": ["https://fast.player.liquidplatform.com/*"], "js": ["flowplayer.js", "embed_script.js"], "all_frames": true
+    }
+  ],
   "manifest_version": 2,
   "update_url": "http://s3-sa-east-1.amazonaws.com/extensions.familianascimento.org/adobehds_generator/updates.xml"
 }

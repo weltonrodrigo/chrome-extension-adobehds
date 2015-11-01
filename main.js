@@ -6,9 +6,13 @@
  *
  */
 
+var endpointUrl = "http://ec2-nutel.duckdns.org:8080/hello"
+
 var manifestUrl = false;
 var manifestDetected = false;
 
+var disciplina;
+var aula;
 
 function onSendHeaders(details)
 {
@@ -40,7 +44,8 @@ function onSendHeaders(details)
                 command += " --useragent \"" + userAgent + "\"";          
             }
 
-            console.log(command);
+            console.dir(command);
+            queueDownload(manifestUrl, authParams, userAgent);
             
             // Show notification with command
 
@@ -50,6 +55,24 @@ function onSendHeaders(details)
     }
 }
 
+function queueDownload(manifestURL, authParams, userAgent){
+
+    var data = new FormData();
+    
+    data.append('disciplina', disciplina);
+    data.append('aula', aula);
+    data.append('manifest', manifestUrl);
+    data.append('auth', authParams);
+    data.append('ua', userAgent);
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', endpointUrl, false);
+    //xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+    xhr.send(data);
+
+
+}
+
 function findUserAgent(headers)
 {
     a = headers.filter(function(el){
@@ -57,7 +80,7 @@ function findUserAgent(headers)
     });
 
     if (a.length > 0){
-        return a.value;
+        return a[0].value;
     }
 
     return false;
@@ -180,3 +203,15 @@ function TracingListener()
 // TODO: Check if blocking is really needed.
 chrome.webRequest.onSendHeaders.addListener(onSendHeaders, {urls: ["<all_urls>"]}, ["requestHeaders"]);
 chrome.webRequest.onCompleted.addListener(onCompleted, {urls: ["<all_urls>"]}, ["responseHeaders"]);
+
+chrome.runtime.onMessage.addListener(
+  function(request, sender, sendResponse) {
+
+    console.log("Disciplina: " + request.disciplina);
+    console.log("Aula: " + request.aula);
+
+
+    disciplina = request.disciplina;
+    aula = request.aula;
+
+  });
